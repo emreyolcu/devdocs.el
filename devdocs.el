@@ -76,6 +76,10 @@ directory-local variable."
   "String used to format a documentation location, e.g. in header line."
   :type 'string)
 
+(defcustom devdocs-annotation-separator (if (char-displayable-p ?—) " ——— " " --- ")
+  "String used to separate annotations from completion candidates."
+  :type 'string)
+
 (defcustom devdocs-disambiguated-entry-format #("%s (%s)" 3 7 (face italic))
   "How to disambiguate entries with identical names in `devdocs-lookup'.
 This string is passed to `format' with two arguments, the entry
@@ -659,11 +663,25 @@ fragment part of ENTRY.path."
   "Get data stored as a string property in STR."
   (get-text-property 0 'devdocs--data str))
 
-(defun devdocs--annotate (cand)
-  "Return an annotation for `devdocs--read-entry' candidate CAND."
+(defun devdocs--annotate-entry (cand)
+  "Return the documentation location for `devdocs--read-entry' candidate CAND."
   (let-alist (devdocs--get-data cand)
-    (concat " " (propertize " " 'display '(space :align-to 40))
-     (devdocs--doc-title .doc) devdocs-separator .type)))
+    (concat (devdocs--doc-title .doc) devdocs-separator .type)))
+
+(defun devdocs--builtin-annotate-entry (cand)
+  "Return an annotation for `devdocs--read-entry' candidate CAND."
+  (concat devdocs-annotation-separator (devdocs--annotate-entry cand)))
+
+(defun devdocs--marginalia-annotate-entry (cand)
+  "Return a Marginalia annotation for `devdocs--read-entry' candidate CAND."
+  (concat (propertize " " 'marginalia--align t)
+          marginalia-separator
+          (propertize (devdocs--annotate-entry cand)
+                      'face 'marginalia-documentation)))
+
+(with-eval-after-load 'marginalia
+  (add-to-list 'marginalia-annotators
+               '(devdocs-entry devdocs--marginalia-annotate-entry builtin none)))
 
 (defun devdocs--relevant-docs (ask)
   "Return a list of relevant documents for the current buffer.
@@ -681,17 +699,13 @@ choice for this buffer.  If ASK is non-nil, ask unconditionally."
 (defun devdocs--read-entry (prompt documents initial-input)
   "Read the name of an entry in one of the DOCUMENTS, using PROMPT.
 
-INITIAL-INPUT is passed to `completing-read'"
-  (let* ((cands (devdocs--with-cache
+INITIAL-INPUT is passed to `completing-read'."
+  (let* ((completion-extra-properties
+          `( :category devdocs-entry
+             :annotation-function ,#'devdocs--builtin-annotate-entry))
+         (cands (devdocs--with-cache
                  (devdocs--entries documents)))
-         (metadata '(metadata
-                     (category . devdocs)
-                     (annotation-function . devdocs--annotate)))
-         (coll (lambda (string predicate action)
-                 (if (eq action 'metadata)
-                     metadata
-                   (complete-with-action action cands string predicate))))
-         (cand (completing-read prompt coll nil t initial-input
+         (cand (completing-read prompt cands nil t initial-input
                                 'devdocs-history
                                 (thing-at-point 'symbol))))
     (devdocs--get-data (or (car (member cand cands))
