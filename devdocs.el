@@ -215,7 +215,7 @@ otherwise, offer only installed documents.
 
 Return a document metadata alist if MULTIPLE is nil; otherwise, a
 list of metadata alists."
-  (let ((cands (mapcar (lambda (it) (cons (alist-get 'slug it) it))
+  (let ((cands (mapcar (lambda (it) (cons (devdocs--doc-title it) it))
                        (if available
                            (devdocs--available-docs)
                          (or (devdocs--installed-docs)
@@ -234,7 +234,7 @@ DOC is a document metadata alist."
     (if (and (file-directory-p dest)
              (file-in-directory-p dest devdocs-data-dir))
         (delete-directory dest t)
-      (user-error "Document `%s' is not installed" (alist-get 'slug doc)))))
+      (user-error "Document \"%s\" is not installed" (devdocs--doc-title doc)))))
 
 ;;;###autoload
 (defun devdocs-install (doc)
@@ -273,7 +273,7 @@ already installed, reinstall it."
                  (file-in-directory-p dest devdocs-data-dir))
         (delete-directory dest t))
       (rename-file (file-name-as-directory temp) dest))
-    (message "Document `%s' installed" slug)))
+    (message "Document \"%s\" installed" (devdocs--doc-title slug))))
 
 ;;;###autoload
 (defun devdocs-update-all ()
@@ -292,7 +292,11 @@ already installed, reinstall it."
                       (devdocs--available-docs)))
               ((y-or-n-p (format "Update %s documents %s?"
                                  (length newer)
-                                 (mapcar (lambda (d) (alist-get 'slug d)) newer)))))
+                                 (string-join
+                                  (mapcar (lambda (d)
+                                            (concat "\"" (devdocs--doc-title d) "\""))
+                                          newer)
+                                  ", ")))))
     (dolist (doc newer)
       (devdocs-install doc))))
 
