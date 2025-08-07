@@ -209,6 +209,31 @@ document."
   (let-alist (if (stringp doc) (devdocs--doc-metadata doc) doc)
     (if (seq-empty-p .version) .name (concat .name " " .version))))
 
+(defun devdocs--get-data (str)
+  "Get data stored as a string property in STR."
+  (get-text-property 0 'devdocs--data str))
+
+(defun devdocs--annotate-document (cand)
+  "Return the version information for `devdocs--read-document' candidate CAND."
+  (let-alist (devdocs--get-data cand)
+    (and (not (string= .release .version)) .release)))
+
+(defun devdocs--builtin-annotate-document (cand)
+  "Return an annotation for `devdocs--read-document' candidate CAND."
+  (when-let ((release (devdocs--annotate-document cand)))
+    (concat devdocs-annotation-separator release)))
+
+(defun devdocs--marginalia-annotate-document (cand)
+  "Return a Marginalia annotation for `devdocs--read-document' candidate CAND."
+  (when-let ((release (devdocs--annotate-document cand)))
+    (concat (propertize " " 'marginalia--align t)
+            marginalia-separator
+            (propertize release 'face 'marginalia-version))))
+
+(with-eval-after-load 'marginalia
+  (add-to-list 'marginalia-annotators
+               '(devdocs-document devdocs--marginalia-annotate-document builtin none)))
+
 (defun devdocs--read-document (prompt &optional multiple available)
   "Query interactively for a DevDocs document.
 
@@ -219,15 +244,20 @@ otherwise, offer only installed documents.
 
 Return a document metadata alist if MULTIPLE is nil; otherwise, a
 list of metadata alists."
-  (let ((cands (mapcar (lambda (it) (cons (devdocs--doc-title it) it))
+  (let ((completion-extra-properties
+         `( :category devdocs-document
+            :annotation-function ,#'devdocs--builtin-annotate-document))
+        (cands (mapcar (lambda (it)
+                         (propertize (devdocs--doc-title it) 'devdocs--data it))
                        (if available
                            (devdocs--available-docs)
                          (or (devdocs--installed-docs)
                              (user-error "No documents in `%s'" devdocs-data-dir))))))
     (if multiple
-        (delq nil (mapcar (lambda (s) (cdr (assoc s cands)))
+        (delq nil (mapcar (lambda (s) (devdocs--get-data (car (member s cands))))
                           (completing-read-multiple prompt cands)))
-      (cdr (assoc (completing-read prompt cands nil t) cands)))))
+      (devdocs--get-data
+       (car (member (completing-read prompt cands nil t) cands))))))
 
 ;;;###autoload
 (defun devdocs-delete (doc)
@@ -658,10 +688,6 @@ fragment part of ENTRY.path."
                             (format devdocs-disambiguated-entry-format name count))
                           'devdocs--data it))
             entries)))
-
-(defun devdocs--get-data (str)
-  "Get data stored as a string property in STR."
-  (get-text-property 0 'devdocs--data str))
 
 (defun devdocs--annotate-entry (cand)
   "Return the documentation location for `devdocs--read-entry' candidate CAND."
